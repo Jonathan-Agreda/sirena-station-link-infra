@@ -1,0 +1,109 @@
+name: sirena-station-link
+networks:
+  sirena-net:
+services:
+  postgres:
+    networks:
+      - sirena-net
+    image: postgres:16-alpine
+    container_name: pg-sirena
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERPASS}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  keycloak:
+    networks:
+      - sirena-net
+    image: quay.io/keycloak/keycloak:26.3.2
+    container_name: kc-sirena
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["start-dev", "--import-realm", "--hostname-strict=false"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: ${KC_DB_URL}
+      KC_DB_USERNAME: ${KC_DB_USER}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./infra/keycloak/realm-alarma.json:/opt/keycloak/data/import/realm-alarma.json:ro
+      - ./infra/keycloak/init-keycloak.sh:/opt/keycloak/init/init-keycloak.sh:ro
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  emqx:
+    networks:
+      - sirena-net
+    image: emqx/emqx:5.8.6
+    container_name: emqx-sirena
+    environment:
+      # Dashboard
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD_USER}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASS}
+
+      # Autenticación por BD interna
+      EMQX_AUTHENTICATION__1__MECHANISM: password_based
+      EMQX_AUTHENTICATION__1__BACKEND: built_in_database
+      EMQX_AUTHENTICATION__1__USER_ID_TYPE: username
+      EMQX_AUTHENTICATION__1__ENABLE: "true"
+
+      # Autorización por BD interna (deny por defecto)
+      EMQX_AUTHORIZATION__NO_MATCH: deny
+      EMQX_AUTHORIZATION__SOURCES__1__TYPE: built_in_database
+      EMQX_AUTHORIZATION__SOURCES__1__ENABLE: "true"
+
+      # Cookie de clúster
+      EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE}
+    ports:
+      - "1883:1883" # MQTT TCP
+      - "8083:8083" # MQTT over WebSocket
+      - "18083:18083" # Dashboard / API
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:18083/api/v5/status >/dev/null",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+    restart: unless-stopped
+
+  emqx-init:
+    networks:
+      - sirena-net
+    image: curlimages/curl:8.8.0
+    container_name: emqx-init
+    depends_on:
+      emqx:
+        condition: service_healthy
+    environment:
+      EMQX_DASHBOARD_USER: ${EMQX_DASHBOARD_USER}
+      EMQX_DASHBOARD_PASS: ${EMQX_DASHBOARD_PASS}
+      MQTT_BACKEND_USER: ${MQTT_BACKEND_USER}
+      MQTT_BACKEND_PASS: ${MQTT_BACKEND_PASS}
+      SEED_DEVICE_ID: ${SEED_DEVICE_ID}
+      SEED_DEVICE_APIKEY: ${SEED_DEVICE_APIKEY}
+    volumes:
+      - ./infra/emqx/init:/init:ro
+    entrypoint: ["sh", "-c"]
+    restart: "no"
+
+volumes:
+  pgdata:

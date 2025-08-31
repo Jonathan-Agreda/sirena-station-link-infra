@@ -1,0 +1,10 @@
+.env
+infra/postgres/data/
+infra/keycloak/data/
+infra/emqx/data/
+backups/
+*.tar
+*.sql
+*.dump
+*.log
+*.tmp
