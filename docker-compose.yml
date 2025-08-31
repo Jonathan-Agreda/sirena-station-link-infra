@@ -73,6 +73,9 @@ services:
       - "1883:1883" # MQTT TCP
       - "8083:8083" # MQTT over WebSocket
       - "18083:18083" # Dashboard / API
+    volumes:
+      - emqxdata:/opt/emqx/data
+      - emqxlog:/opt/emqx/log
     healthcheck:
       test:
         [
@@ -98,12 +101,12 @@ services:
       EMQX_DASHBOARD_PASS: ${EMQX_DASHBOARD_PASS}
       MQTT_BACKEND_USER: ${MQTT_BACKEND_USER}
       MQTT_BACKEND_PASS: ${MQTT_BACKEND_PASS}
-      SEED_DEVICE_ID: ${SEED_DEVICE_ID}
-      SEED_DEVICE_APIKEY: ${SEED_DEVICE_APIKEY}
     volumes:
-      - ./infra/emqx/init:/init:ro
-    entrypoint: ["sh", "-c"]
+      - ./infra/emqx/init/init.sh:/init.sh:ro
+    entrypoint: ["sh", "/init.sh"]
     restart: "no"
 
 volumes:
   pgdata:
+  emqxdata:
+  emqxlog:
