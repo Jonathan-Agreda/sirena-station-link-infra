@@ -2,6 +2,7 @@ name: sirena-station-link
 networks:
   sirena-net:
 services:
+  # --- TUS SERVICIOS ORIGINALES Y FUNCIONALES ---
   postgres:
     networks:
       - sirena-net
@@ -20,12 +21,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 20s # <--- AÑADE ESTA LÍNEA
     restart: unless-stopped
 
   keycloak:
     networks:
       - sirena-net
-    image: quay.io/keycloak/keycloak:26.3.2
+    image: quay.io/keycloak/keycloak:26.3.2 # <-- TU VERSIÓN ORIGINAL
     container_name: kc-sirena
     depends_on:
       postgres:
@@ -49,30 +51,23 @@ services:
   emqx:
     networks:
       - sirena-net
-    image: emqx/emqx:5.8.6
+    image: emqx/emqx:5.8.6 # <-- TU VERSIÓN ORIGINAL
     container_name: emqx-sirena
     environment:
-      # Dashboard
       EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD_USER}
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASS}
-
-      # Autenticación por BD interna
       EMQX_AUTHENTICATION__1__MECHANISM: password_based
       EMQX_AUTHENTICATION__1__BACKEND: built_in_database
       EMQX_AUTHENTICATION__1__USER_ID_TYPE: username
       EMQX_AUTHENTICATION__1__ENABLE: "true"
-
-      # Autorización por BD interna (deny por defecto)
       EMQX_AUTHORIZATION__NO_MATCH: deny
       EMQX_AUTHORIZATION__SOURCES__1__TYPE: built_in_database
       EMQX_AUTHORIZATION__SOURCES__1__ENABLE: "true"
-
-      # Cookie de clúster
       EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE}
     ports:
-      - "1883:1883" # MQTT TCP
-      - "8083:8083" # MQTT over WebSocket
-      - "18083:18083" # Dashboard / API
+      - "1883:1883"
+      - "8083:8083"
+      - "18083:18083"
     volumes:
       - ./emqx/data:/opt/emqx/data
       - ./emqx/log:/opt/emqx/log
@@ -106,5 +101,91 @@ services:
     entrypoint: ["sh", "/init.sh"]
     restart: "no"
 
+  # --- NUEVOS SERVICIOS DE APLICACIÓN ---
+  backend:
+    networks:
+      - sirena-net
+    container_name: siren-station-backend
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      emqx:
+        condition: service_healthy
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      # Todas las variables del backend que necesita
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+      SHADOW_DATABASE_URL: "postgresql://${POSTGRES_SUPERUSER}:${POSTGRES_SUPERPASS}@postgres:5432/postgres"
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_REALM: alarma
+      KEYCLOAK_CLIENT_ID: backend-api
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      MQTT_HOST: emqx
+      EMQX_HOST: emqx # <-- Añadido por si tu app usa este nombre
+      EMQX_PORT: 1883
+      EMQX_USERNAME: ${MQTT_BACKEND_USER}
+      EMQX_PASSWORD: ${MQTT_BACKEND_PASS}
+      # El resto de variables se toman del .env
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+      CORS_ORIGINS: http://localhost:3000
+      BACKEND_PUBLIC_URL: http://localhost:${PORT}
+      USER_DEFAULT_PASSWORD: ${USER_DEFAULT_PASSWORD}
+      ACCESS_TOKEN_TTL_SEC: ${ACCESS_TOKEN_TTL_SEC}
+      REFRESH_TOKEN_TTL_SEC: ${REFRESH_TOKEN_TTL_SEC}
+      REFRESH_ROTATE_STRICT: ${REFRESH_ROTATE_STRICT}
+      REFRESH_MAX_REUSE: ${REFRESH_MAX_REUSE}
+      REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME}
+      REFRESH_COOKIE_DOMAIN: ${REFRESH_COOKIE_DOMAIN}
+      REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE}
+      REFRESH_COOKIE_SAMESITE: ${REFRESH_COOKIE_SAMESITE}
+      REFRESH_COOKIE_PATH: ${REFRESH_COOKIE_PATH}
+      REFRESH_COOKIE_HTTPONLY: ${REFRESH_COOKIE_HTTPONLY}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DEFAULT_CMD_TTL_MS: ${DEFAULT_CMD_TTL_MS}
+    restart: unless-stopped
+
+  frontend:
+    networks:
+      - sirena-net
+    container_name: siren-station-frontend
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      # Todas las variables del frontend que necesita
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      NEXT_PUBLIC_KEYCLOAK_BASE_URL: http://localhost:8080
+      NEXT_PUBLIC_KEYCLOAK_REALM: alarma
+      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: frontend-spa
+      NEXT_PUBLIC_APP_NAME: SirenaStationLink
+      NEXT_PUBLIC_SLOGAN: Alerta comunitaria al instante
+      NEXT_PUBLIC_DEVELOPER_NAME: Ing. Jonathan Agreda, MSc.
+      NEXT_PUBLIC_COMPANY_NAME: Enterpriselink
+      NEXT_PUBLIC_COMPANY_URL: https://enterpriselink.example
+      NEXT_PUBLIC_BRAND_PRIMARY: "#D7263D"
+      NEXT_PUBLIC_BRAND_PRIMARY_FG: "#ffffff"
+      NEXT_PUBLIC_BRAND_BG_LIGHT: "#F8FAFC"
+      NEXT_PUBLIC_BRAND_FG_LIGHT: "#0F172A"
+      NEXT_PUBLIC_BRAND_BG_DARK: "#0B1220"
+      NEXT_PUBLIC_BRAND_FG_DARK: "#E2E8F0"
+      NEXT_PUBLIC_BRAND_ACCENT: "#2563EB"
+      NEXT_PUBLIC_BRAND_SUCCESS: "#22C55E"
+      NEXT_PUBLIC_BRAND_WARNING: "#F59E0B"
+      NEXT_PUBLIC_BRAND_DANGER: "#EF4444"
+      NEXT_PUBLIC_SIRENA_AUTO_OFF: 300000
+      NEXT_PUBLIC_LOGS_REFETCH_MS: 2000
+      NEXT_PUBLIC_LOGS_HIGHLIGHT_MS: 20000
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  emqx_data:
