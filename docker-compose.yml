@@ -134,7 +134,7 @@ services:
       # El resto de variables se toman del .env
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT}
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: ${CORS_ORIGINS}
       BACKEND_PUBLIC_URL: http://localhost:${PORT}
       USER_DEFAULT_PASSWORD: ${USER_DEFAULT_PASSWORD}
       ACCESS_TOKEN_TTL_SEC: ${ACCESS_TOKEN_TTL_SEC}
