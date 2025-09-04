@@ -1,5 +1,4 @@
 .env
-infra/postgres/data/
 infra/keycloak/data/
 infra/emqx/data/
 backups/
@@ -8,3 +7,5 @@ backups/
 *.dump
 *.log
 *.tmp
+emqx/data
+emqx/log
