@@ -12,7 +12,7 @@ services:
       POSTGRES_USER: ${POSTGRES_SUPERUSER}
       POSTGRES_PASSWORD: ${POSTGRES_SUPERPASS}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -149,6 +149,20 @@ services:
       REFRESH_COOKIE_HTTPONLY: ${REFRESH_COOKIE_HTTPONLY}
       LOG_LEVEL: ${LOG_LEVEL}
       DEFAULT_CMD_TTL_MS: ${DEFAULT_CMD_TTL_MS}
+      # --- SMTP Namecheap ---
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_SECURE: ${MAIL_SECURE}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASS: ${MAIL_PASS}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME}
+      MAIL_FROM_EMAIL: ${MAIL_FROM_EMAIL}
+      MAIL_BRAND_PRIMARY: ${MAIL_BRAND_PRIMARY}
+      MAIL_BRAND_DARK: ${MAIL_BRAND_DARK}
+      MAIL_BRAND_ACCENT: ${MAIL_BRAND_ACCENT}
+      MAIL_LOGO_URL: ${MAIL_LOGO_URL}
+      APP_LOGIN_URL: ${APP_LOGIN_URL}
+      MAIL_DEV_ENABLED: ${MAIL_DEV_ENABLED}
     restart: unless-stopped
 
   frontend:
