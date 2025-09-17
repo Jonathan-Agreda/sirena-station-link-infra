@@ -63,14 +63,18 @@ services:
       EMQX_AUTHORIZATION__NO_MATCH: deny
       EMQX_AUTHORIZATION__SOURCES__1__TYPE: built_in_database
       EMQX_AUTHORIZATION__SOURCES__1__ENABLE: "true"
+      EMQX_AUTHORIZATION__SOURCES__2__TYPE: file # 👈 añadir
+      EMQX_AUTHORIZATION__SOURCES__2__ENABLE: "true" # 👈 añadir
+      EMQX_AUTHORIZATION__SOURCES__2__PATH: "/opt/emqx/etc/acl.conf"
       EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE}
     ports:
       - "1883:1883"
-      - "8083:8083"
-      - "18083:18083"
+      - "127.0.0.1:8083:8083"
+      - "127.0.0.1:18083:18083"
     volumes:
       - ./emqx/data:/opt/emqx/data
       - ./emqx/log:/opt/emqx/log
+      - ./infra/emqx/acl.conf:/opt/emqx/etc/acl.conf:ro
     healthcheck:
       test:
         [
@@ -175,32 +179,10 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+    env_file:
+      - ../frontend/.env.local
     ports:
       - "3000:3000"
-    environment:
-      # Todas las variables del frontend que necesita
-      NEXT_PUBLIC_API_URL: http://localhost:4000/api
-      NEXT_PUBLIC_KEYCLOAK_BASE_URL: http://localhost:8080
-      NEXT_PUBLIC_KEYCLOAK_REALM: alarma
-      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: frontend-spa
-      NEXT_PUBLIC_APP_NAME: SirenaStationLink
-      NEXT_PUBLIC_SLOGAN: Alerta comunitaria al instante
-      NEXT_PUBLIC_DEVELOPER_NAME: Ing. Jonathan Agreda, MSc.
-      NEXT_PUBLIC_COMPANY_NAME: Enterpriselink
-      NEXT_PUBLIC_COMPANY_URL: https://enterpriselink.example
-      NEXT_PUBLIC_BRAND_PRIMARY: "#D7263D"
-      NEXT_PUBLIC_BRAND_PRIMARY_FG: "#ffffff"
-      NEXT_PUBLIC_BRAND_BG_LIGHT: "#F8FAFC"
-      NEXT_PUBLIC_BRAND_FG_LIGHT: "#0F172A"
-      NEXT_PUBLIC_BRAND_BG_DARK: "#0B1220"
-      NEXT_PUBLIC_BRAND_FG_DARK: "#E2E8F0"
-      NEXT_PUBLIC_BRAND_ACCENT: "#2563EB"
-      NEXT_PUBLIC_BRAND_SUCCESS: "#22C55E"
-      NEXT_PUBLIC_BRAND_WARNING: "#F59E0B"
-      NEXT_PUBLIC_BRAND_DANGER: "#EF4444"
-      NEXT_PUBLIC_SIRENA_AUTO_OFF: 300000
-      NEXT_PUBLIC_LOGS_REFETCH_MS: 2000
-      NEXT_PUBLIC_LOGS_HIGHLIGHT_MS: 20000
     restart: unless-stopped
 
 volumes:
