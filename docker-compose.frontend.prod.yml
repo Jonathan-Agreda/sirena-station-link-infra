@@ -1,0 +1,77 @@
+name: sirena-frontend-production
+
+# ============================================================
+# SIRENA STATION LINK - FRONTEND PRODUCTION
+# Next.js hardened standalone deployment
+# ============================================================
+
+services:
+  frontend:
+    # Previously built and validated recovery image
+    image: sirenastationlink-frontend:recovery-20261111
+
+    pull_policy: never
+
+    container_name: siren-station-frontend
+
+    # --------------------------------------------------------
+    # APPLICATION
+    # --------------------------------------------------------
+
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+
+    # Accessible only through the VPS reverse proxy
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    # --------------------------------------------------------
+    # AVAILABILITY
+    # --------------------------------------------------------
+
+    restart: unless-stopped
+
+    # --------------------------------------------------------
+    # SECURITY HARDENING
+    # --------------------------------------------------------
+
+    read_only: true
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/.next/cache:rw,noexec,nosuid,size=128m,uid=1001,gid=1001,mode=0700
+
+    # --------------------------------------------------------
+    # NETWORK
+    # --------------------------------------------------------
+
+    networks:
+      - frontend-net
+
+    # --------------------------------------------------------
+    # LOG ROTATION
+    # --------------------------------------------------------
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ============================================================
+# EXISTING PRODUCTION NETWORK
+# ============================================================
+
+networks:
+  frontend-net:
+    external: true
+    name: sirena-frontend-recovery-net
