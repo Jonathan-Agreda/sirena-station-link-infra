@@ -1,190 +1,349 @@
 name: sirena-station-link
+
+# ============================================================
+# NETWORKS
+# ============================================================
 networks:
   sirena-net:
+
+# ============================================================
+# SERVICES
+# ============================================================
 services:
-  # --- TUS SERVICIOS ORIGINALES Y FUNCIONALES ---
+  # ==========================================================
+  # POSTGRESQL
+  # ==========================================================
   postgres:
     networks:
       - sirena-net
+
     image: postgres:16-alpine
     container_name: pg-sirena
+
     environment:
       POSTGRES_USER: ${POSTGRES_SUPERUSER}
       POSTGRES_PASSWORD: ${POSTGRES_SUPERPASS}
+
+      # Backend database initialization
+      APP_DB_NAME: ${POSTGRES_DB}
+      APP_DB_USER: ${POSTGRES_USER}
+      APP_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Keycloak database initialization
+      KC_DB_NAME: ${KC_DB}
+      KC_DB_USER: ${KC_DB_USER}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+
     ports:
       - "5433:5432"
+
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER}"]
       interval: 5s
       timeout: 3s
       retries: 20
-      start_period: 20s # <--- AÑADE ESTA LÍNEA
+      start_period: 20s
+
     restart: unless-stopped
 
+  # ==========================================================
+  # KEYCLOAK
+  # ==========================================================
   keycloak:
     networks:
       - sirena-net
-    image: quay.io/keycloak/keycloak:26.3.2 # <-- TU VERSIÓN ORIGINAL
+
+    image: quay.io/keycloak/keycloak:26.3.2
     container_name: kc-sirena
+
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["start-dev", "--import-realm", "--hostname-strict=false"]
+
+    command:
+      - start-dev
+      - --import-realm
+      - --hostname-strict=false
+
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
       KC_DB: postgres
       KC_DB_URL: ${KC_DB_URL}
       KC_DB_USERNAME: ${KC_DB_USER}
       KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+
       KC_HEALTH_ENABLED: "true"
+
     volumes:
       - ./infra/keycloak/realm-alarma.json:/opt/keycloak/data/import/realm-alarma.json:ro
       - ./infra/keycloak/init-keycloak.sh:/opt/keycloak/init/init-keycloak.sh:ro
+
     ports:
       - "8080:8080"
+
     restart: unless-stopped
 
+  # ==========================================================
+  # EMQX - MQTT BROKER
+  # ==========================================================
   emqx:
     networks:
       - sirena-net
-    image: emqx/emqx:5.8.6 # <-- TU VERSIÓN ORIGINAL
+
+    image: emqx/emqx:5.8.6
     container_name: emqx-sirena
+
     environment:
       EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD_USER}
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASS}
+
       EMQX_AUTHENTICATION__1__MECHANISM: password_based
       EMQX_AUTHENTICATION__1__BACKEND: built_in_database
       EMQX_AUTHENTICATION__1__USER_ID_TYPE: username
       EMQX_AUTHENTICATION__1__ENABLE: "true"
+
       EMQX_AUTHORIZATION__NO_MATCH: deny
+
       EMQX_AUTHORIZATION__SOURCES__1__TYPE: built_in_database
       EMQX_AUTHORIZATION__SOURCES__1__ENABLE: "true"
-      EMQX_AUTHORIZATION__SOURCES__2__TYPE: file # 👈 añadir
-      EMQX_AUTHORIZATION__SOURCES__2__ENABLE: "true" # 👈 añadir
+
+      EMQX_AUTHORIZATION__SOURCES__2__TYPE: file
+      EMQX_AUTHORIZATION__SOURCES__2__ENABLE: "true"
       EMQX_AUTHORIZATION__SOURCES__2__PATH: "/opt/emqx/etc/acl.conf"
+
       EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE}
+
     ports:
       - "1883:1883"
       - "127.0.0.1:8083:8083"
       - "127.0.0.1:18083:18083"
+
     volumes:
       - ./emqx/data:/opt/emqx/data
       - ./emqx/log:/opt/emqx/log
       - ./infra/emqx/acl.conf:/opt/emqx/etc/acl.conf:ro
+
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "curl -fsS http://127.0.0.1:18083/api/v5/status >/dev/null",
-        ]
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:18083/api/v5/status >/dev/null
       interval: 5s
       timeout: 3s
       retries: 60
       start_period: 20s
+
     restart: unless-stopped
 
+  # ==========================================================
+  # EMQX INITIALIZATION
+  # ==========================================================
   emqx-init:
     networks:
       - sirena-net
+
     image: curlimages/curl:8.8.0
     container_name: emqx-init
+
     depends_on:
       emqx:
         condition: service_healthy
+
     environment:
       EMQX_DASHBOARD_USER: ${EMQX_DASHBOARD_USER}
       EMQX_DASHBOARD_PASS: ${EMQX_DASHBOARD_PASS}
+
       MQTT_BACKEND_USER: ${MQTT_BACKEND_USER}
       MQTT_BACKEND_PASS: ${MQTT_BACKEND_PASS}
+
     volumes:
       - ./infra/emqx/init/init.sh:/init.sh:ro
-    entrypoint: ["sh", "/init.sh"]
+
+    entrypoint:
+      - sh
+      - /init.sh
+
     restart: "no"
 
-  # --- NUEVOS SERVICIOS DE APLICACIÓN ---
+  # ==========================================================
+  # BACKEND - NESTJS
+  # ==========================================================
   backend:
     networks:
       - sirena-net
+
     container_name: siren-station-backend
+
     build:
       context: ../backend
       dockerfile: Dockerfile
+
     depends_on:
       postgres:
         condition: service_healthy
+
       keycloak:
         condition: service_started
+
       emqx:
         condition: service_healthy
+
     ports:
       - "${PORT}:${PORT}"
+
     environment:
-      # Todas las variables del backend que necesita
+      # ------------------------------------------------------
+      # DATABASE
+      # ------------------------------------------------------
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+
       SHADOW_DATABASE_URL: "postgresql://${POSTGRES_SUPERUSER}:${POSTGRES_SUPERPASS}@postgres:5432/postgres"
+
+      # ------------------------------------------------------
+      # KEYCLOAK
+      # ------------------------------------------------------
       KEYCLOAK_BASE_URL: http://keycloak:8080
       KEYCLOAK_REALM: alarma
       KEYCLOAK_CLIENT_ID: backend-api
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+
+      # ------------------------------------------------------
+      # MQTT / EMQX
+      # ------------------------------------------------------
       MQTT_HOST: emqx
-      EMQX_HOST: emqx # <-- Añadido por si tu app usa este nombre
+      EMQX_HOST: emqx
       EMQX_PORT: 1883
       EMQX_USERNAME: ${MQTT_BACKEND_USER}
       EMQX_PASSWORD: ${MQTT_BACKEND_PASS}
-      # El resto de variables se toman del .env
+
+      # ------------------------------------------------------
+      # APPLICATION
+      # ------------------------------------------------------
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT}
       CORS_ORIGINS: ${CORS_ORIGINS}
       BACKEND_PUBLIC_URL: http://localhost:${PORT}
+
       USER_DEFAULT_PASSWORD: ${USER_DEFAULT_PASSWORD}
+
+      # ------------------------------------------------------
+      # AUTHENTICATION / SESSIONS
+      # ------------------------------------------------------
       ACCESS_TOKEN_TTL_SEC: ${ACCESS_TOKEN_TTL_SEC}
       REFRESH_TOKEN_TTL_SEC: ${REFRESH_TOKEN_TTL_SEC}
+
       REFRESH_ROTATE_STRICT: ${REFRESH_ROTATE_STRICT}
       REFRESH_MAX_REUSE: ${REFRESH_MAX_REUSE}
+
       REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME}
       REFRESH_COOKIE_DOMAIN: ${REFRESH_COOKIE_DOMAIN}
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE}
       REFRESH_COOKIE_SAMESITE: ${REFRESH_COOKIE_SAMESITE}
       REFRESH_COOKIE_PATH: ${REFRESH_COOKIE_PATH}
       REFRESH_COOKIE_HTTPONLY: ${REFRESH_COOKIE_HTTPONLY}
+
+      # ------------------------------------------------------
+      # LOGGING / DEVICE COMMANDS
+      # ------------------------------------------------------
       LOG_LEVEL: ${LOG_LEVEL}
       DEFAULT_CMD_TTL_MS: ${DEFAULT_CMD_TTL_MS}
-      # --- SMTP Namecheap ---
+
+      # ------------------------------------------------------
+      # SMTP NAMECHEAP
+      # ------------------------------------------------------
       MAIL_HOST: ${MAIL_HOST}
       MAIL_PORT: ${MAIL_PORT}
       MAIL_SECURE: ${MAIL_SECURE}
       MAIL_USER: ${MAIL_USER}
       MAIL_PASS: ${MAIL_PASS}
+
       MAIL_FROM_NAME: ${MAIL_FROM_NAME}
       MAIL_FROM_EMAIL: ${MAIL_FROM_EMAIL}
+
       MAIL_BRAND_PRIMARY: ${MAIL_BRAND_PRIMARY}
       MAIL_BRAND_DARK: ${MAIL_BRAND_DARK}
       MAIL_BRAND_ACCENT: ${MAIL_BRAND_ACCENT}
+
       MAIL_LOGO_URL: ${MAIL_LOGO_URL}
       APP_LOGIN_URL: ${APP_LOGIN_URL}
       MAIL_DEV_ENABLED: ${MAIL_DEV_ENABLED}
-      # --- Integración de Telegram ---
+
+      # ------------------------------------------------------
+      # TELEGRAM
+      # ------------------------------------------------------
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL}
+
     restart: unless-stopped
 
+  # ==========================================================
+  # FRONTEND - NEXTJS
+  # ==========================================================
   frontend:
     networks:
       - sirena-net
+
     container_name: siren-station-frontend
+
     build:
       context: ../frontend
       dockerfile: Dockerfile
-    env_file:
-      - ../frontend/.env.local
+
+      secrets:
+        - production_env
+
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+
     restart: unless-stopped
 
+    # --------------------------------------------------------
+    # SECURITY HARDENING
+    # --------------------------------------------------------
+
+    read_only: true
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/.next/cache:rw,noexec,nosuid,size=128m,uid=1001,gid=1001,mode=0700
+
+    # --------------------------------------------------------
+    # LOG ROTATION
+    # --------------------------------------------------------
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ============================================================
+# PERSISTENT VOLUMES
+# ============================================================
 volumes:
   pgdata:
   emqx_data:
+
+# ============================================================
+# BUILDKIT SECRETS
+# ============================================================
+secrets:
+  production_env:
+    file: ../frontend/.env.local

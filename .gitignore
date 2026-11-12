@@ -1,11 +1,61 @@
+
+# ============================================================
+# VARIABLES DE ENTORNO Y SECRETOS
+# ============================================================
 .env
-infra/keycloak/data/
-infra/emqx/data/
-backups/
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ============================================================
+# DATOS PERSISTENTES DE KEYCLOAK
+# ============================================================
+/infra/keycloak/data/
+
+# ============================================================
+# DATOS PERSISTENTES DE EMQX
+# ============================================================
+/infra/emqx/data/
+/infra/emqx/log/
+
+/emqx/data/
+/emqx/log/
+
+# ============================================================
+# RESPALDOS Y RECUPERACION
+# ============================================================
+/backups/
+/recovery/
+/evidence/
+
 *.tar
+*.tar.gz
 *.sql
+*.sql.gz
 *.dump
+*.bak
+*.backup
+
+# ============================================================
+# ANTIGUO SCRIPT DE POSTGRESQL
+# Contiene credenciales literales. No versionar.
+# ============================================================
+/infra/postgres/init.sql
+
+# ============================================================
+# LOGS Y ARCHIVOS TEMPORALES
+# ============================================================
 *.log
 *.tmp
-emqx/data
-emqx/log
+
+# ============================================================
+# IDE Y SISTEMA OPERATIVO
+# ============================================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

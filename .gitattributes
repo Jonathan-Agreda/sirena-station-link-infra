@@ -1,0 +1,15 @@
+
+# Normalize text files
+* text=auto
+
+# Linux shell scripts
+*.sh text eol=lf
+
+# Docker and configuration files
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sql text eol=lf
+
+# Environment templates
+.env.example text eol=lf
